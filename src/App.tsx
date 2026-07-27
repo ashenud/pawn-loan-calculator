@@ -4,9 +4,10 @@ import { principalFromGoldWeight, quickEstimate } from './lib/calculator'
 import {
   buildFlatPaymentSchedule,
   computeRequiredMonthlyPayment,
+  monthsToPayoffWithFlatPayment,
   simulatePayoffSchedule,
 } from './lib/payoffPlanner'
-import type { Karat } from './lib/types'
+import type { InterestMethod, Karat } from './lib/types'
 import { coerceNumeric, type NumericInputValue } from './lib/numericInput'
 import { applyTheme, getInitialTheme, type Theme } from './lib/theme'
 import { BankSelector } from './components/BankSelector'
@@ -14,8 +15,11 @@ import { CalculatorForm } from './components/CalculatorForm'
 import { ResultsSummary } from './components/ResultsSummary'
 import { PayoffPlanner } from './components/PayoffPlanner'
 import { PaymentScheduleSimulator } from './components/PaymentScheduleSimulator'
+import { InterestMethodToggle } from './components/InterestMethodToggle'
 import { Disclaimer } from './components/Disclaimer'
 import { ThemeToggle } from './components/ThemeToggle'
+
+const MONTHLY_PAYMENT_SEARCH_HORIZON_MONTHS = 600
 
 const ALL_KARATS: Karat[] = ['24K', '22K', '21K', '18K']
 
@@ -63,6 +67,10 @@ function App() {
     loanPeriodMonths: coerceNumeric(loanPeriodMonths),
   })
 
+  // Repayment interest method — shared by the payoff planner and the schedule simulator below.
+  const [interestMethod, setInterestMethod] = useState<InterestMethod>('reducing')
+  const penalRatePercent = selectedPreset?.penalInterestRatePercent ?? 2
+
   // Payoff planner
   const [targetTermMonths, setTargetTermMonths] = useState<NumericInputValue>(12)
   const targetTermMonthsNumeric = coerceNumeric(targetTermMonths)
@@ -72,6 +80,7 @@ function App() {
           computedPrincipal,
           coerceNumeric(annualInterestRatePercent),
           targetTermMonthsNumeric,
+          interestMethod,
         )
       : null
 
@@ -103,8 +112,27 @@ function App() {
     computedPrincipal,
     coerceNumeric(annualInterestRatePercent),
     payments.map(coerceNumeric),
-    { penalRatePercent: selectedPreset?.penalInterestRatePercent ?? 2 },
+    { penalRatePercent, interestMethod },
   )
+
+  // "What can I afford monthly?" — the inverse of the payoff planner: enter a
+  // flat payment, find out how many months it takes, using the same table.
+  const [monthlyPaymentInput, setMonthlyPaymentInput] = useState<NumericInputValue>('')
+  const monthlyPaymentNumeric = coerceNumeric(monthlyPaymentInput)
+  const estimatedMonthsForPayment =
+    computedPrincipal > 0 && monthlyPaymentNumeric > 0
+      ? monthsToPayoffWithFlatPayment(computedPrincipal, coerceNumeric(annualInterestRatePercent), monthlyPaymentNumeric, {
+          penalRatePercent,
+          interestMethod,
+          maxMonths: MONTHLY_PAYMENT_SEARCH_HORIZON_MONTHS,
+        })
+      : null
+
+  const handleApplyMonthlyPayment = () => {
+    if (estimatedMonthsForPayment === null) return
+    setPlanMonths(estimatedMonthsForPayment)
+    setPayments(buildFlatPaymentSchedule(monthlyPaymentNumeric, estimatedMonthsForPayment))
+  }
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
@@ -150,6 +178,10 @@ function App() {
 
         <div className="mt-8 space-y-8">
           <section className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
+            <InterestMethodToggle value={interestMethod} onChange={setInterestMethod} />
+          </section>
+
+          <section className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <PayoffPlanner
               targetTermMonths={targetTermMonths}
               onTargetTermMonthsChange={setTargetTermMonths}
@@ -160,11 +192,17 @@ function App() {
 
           <section className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
             <PaymentScheduleSimulator
+              interestMethod={interestMethod}
               planMonths={planMonths}
               onPlanMonthsChange={setPlanMonths}
               payments={payments}
               onPaymentChange={handlePaymentChange}
               simulation={simulation}
+              monthlyPaymentInput={monthlyPaymentInput}
+              onMonthlyPaymentInputChange={setMonthlyPaymentInput}
+              estimatedMonthsForPayment={estimatedMonthsForPayment}
+              onApplyMonthlyPayment={handleApplyMonthlyPayment}
+              monthlyPaymentHorizonMonths={MONTHLY_PAYMENT_SEARCH_HORIZON_MONTHS}
             />
           </section>
         </div>

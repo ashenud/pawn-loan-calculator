@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildFlatPaymentSchedule,
   computeRequiredMonthlyPayment,
+  monthsToPayoffWithFlatPayment,
   simulatePayoffSchedule,
 } from '../payoffPlanner'
 
@@ -28,6 +29,22 @@ describe('computeRequiredMonthlyPayment', () => {
   it('rejects a non-positive term', () => {
     expect(() => computeRequiredMonthlyPayment(1000, 10, 0)).toThrow(RangeError)
     expect(() => computeRequiredMonthlyPayment(1000, 10, -3)).toThrow(RangeError)
+  })
+
+  it('matches the flat-rate formula (constant principal/term + constant interest on original principal)', () => {
+    const principal = 120000
+    const rate = 12
+    const months = 12
+    const payment = computeRequiredMonthlyPayment(principal, rate, months, 'flat')
+
+    const monthlyRate = rate / 100 / 12
+    expect(payment).toBeCloseTo(principal / months + principal * monthlyRate)
+    // 120000/12 = 10000 straight-line principal + 120000*0.01 = 1200 interest
+    expect(payment).toBeCloseTo(11200)
+  })
+
+  it('flat and reducing agree for a zero interest rate', () => {
+    expect(computeRequiredMonthlyPayment(12000, 0, 12, 'flat')).toBeCloseTo(1000)
   })
 })
 
@@ -115,5 +132,79 @@ describe('simulatePayoffSchedule', () => {
     expect(() => simulatePayoffSchedule(-1, 10, [100])).toThrow(RangeError)
     expect(() => simulatePayoffSchedule(1000, -1, [100])).toThrow(RangeError)
     expect(() => simulatePayoffSchedule(1000, 10, [-100])).toThrow(RangeError)
+  })
+})
+
+describe('simulatePayoffSchedule with interestMethod "flat"', () => {
+  it('charges interest on the original principal, not the shrinking balance', () => {
+    const principal = 100000
+    const rate = 12
+    // Pay down some principal in month 1, then skip month 2.
+    const result = simulatePayoffSchedule(principal, rate, [20000, 0], { interestMethod: 'flat' })
+
+    // Month 1 interest is on the full 100000 (~1000), same as reducing would give here.
+    expect(result.rows[0].interestAccrued).toBeCloseTo(1000)
+    // Month 2 interest is STILL based on the original 100000, not the now-lower balance.
+    expect(result.rows[1].openingBalance).toBeLessThan(principal)
+    expect(result.rows[1].interestAccrued).toBeCloseTo(1000)
+  })
+
+  it('pays off exactly on schedule when using the flat-rate required payment', () => {
+    const principal = 120000
+    const rate = 12
+    const months = 12
+    const payment = computeRequiredMonthlyPayment(principal, rate, months, 'flat')
+    const schedule = buildFlatPaymentSchedule(payment, months)
+
+    const result = simulatePayoffSchedule(principal, rate, schedule, { interestMethod: 'flat' })
+
+    expect(result.fullyPaidOff).toBe(true)
+    expect(result.monthsToPayoff).toBe(months)
+    expect(result.rows[months - 1].closingBalance).toBeCloseTo(0, 6)
+  })
+
+  it('yields the same result as reducing balance when no interim payments are made (lump-sum settlement)', () => {
+    const principal = 100000
+    const rate = 12
+    const payments = [...buildFlatPaymentSchedule(0, 5), 106000]
+
+    const reducing = simulatePayoffSchedule(principal, rate, payments)
+    const flat = simulatePayoffSchedule(principal, rate, payments, { interestMethod: 'flat' })
+
+    expect(flat.totalInterestPaid).toBeCloseTo(reducing.totalInterestPaid)
+    expect(flat.monthsToPayoff).toBe(reducing.monthsToPayoff)
+  })
+})
+
+describe('monthsToPayoffWithFlatPayment', () => {
+  it('matches simulatePayoffSchedule for a payment that clears the balance within the horizon', () => {
+    const principal = 100000
+    const rate = 12
+    const months = monthsToPayoffWithFlatPayment(principal, rate, 9000)
+
+    expect(months).not.toBeNull()
+    const schedule = buildFlatPaymentSchedule(9000, months!)
+    const result = simulatePayoffSchedule(principal, rate, schedule)
+    expect(result.monthsToPayoff).toBe(months)
+  })
+
+  it('returns null when the payment never clears the balance within the horizon', () => {
+    // 12% p.a. on 100000 accrues ~1000/month in interest — a 500 payment never keeps up.
+    const months = monthsToPayoffWithFlatPayment(100000, 12, 500, { maxMonths: 36 })
+    expect(months).toBeNull()
+  })
+
+  it('respects the interestMethod option', () => {
+    const principal = 120000
+    const rate = 12
+    const flatPayment = computeRequiredMonthlyPayment(principal, rate, 12, 'flat')
+    const months = monthsToPayoffWithFlatPayment(principal, rate, flatPayment, {
+      interestMethod: 'flat',
+    })
+    expect(months).toBe(12)
+  })
+
+  it('rejects a non-positive maxMonths', () => {
+    expect(() => monthsToPayoffWithFlatPayment(1000, 10, 100, { maxMonths: 0 })).toThrow(RangeError)
   })
 })
