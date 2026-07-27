@@ -1,10 +1,11 @@
 import type { PayoffSimulationResult } from '../lib/types'
+import { parseNumericInput, type NumericInputValue } from '../lib/numericInput'
 
 interface PaymentScheduleSimulatorProps {
-  planMonths: number
-  onPlanMonthsChange: (value: number) => void
-  payments: number[]
-  onPaymentChange: (index: number, value: number) => void
+  planMonths: NumericInputValue
+  onPlanMonthsChange: (value: NumericInputValue) => void
+  payments: NumericInputValue[]
+  onPaymentChange: (index: number, value: NumericInputValue) => void
   simulation: PayoffSimulationResult
 }
 
@@ -38,7 +39,7 @@ export function PaymentScheduleSimulator({
           min={1}
           max={120}
           value={planMonths}
-          onChange={(e) => onPlanMonthsChange(Number(e.target.value) || 1)}
+          onChange={(e) => onPlanMonthsChange(parseNumericInput(e.target.value))}
           className="w-24 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
         />
       </div>
@@ -71,7 +72,7 @@ export function PaymentScheduleSimulator({
                     type="number"
                     min={0}
                     value={payments[index] ?? 0}
-                    onChange={(e) => onPaymentChange(index, Number(e.target.value) || 0)}
+                    onChange={(e) => onPaymentChange(index, parseNumericInput(e.target.value))}
                     className="w-28 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-sm"
                   />
                 </td>

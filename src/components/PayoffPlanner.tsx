@@ -1,6 +1,8 @@
+import { coerceNumeric, parseNumericInput, type NumericInputValue } from '../lib/numericInput'
+
 interface PayoffPlannerProps {
-  targetTermMonths: number
-  onTargetTermMonthsChange: (value: number) => void
+  targetTermMonths: NumericInputValue
+  onTargetTermMonthsChange: (value: NumericInputValue) => void
   requiredMonthlyPayment: number | null
   onLoadIntoSimulator: () => void
 }
@@ -32,8 +34,8 @@ export function PayoffPlanner({
             id="target-term"
             type="number"
             min={1}
-            value={Number.isFinite(targetTermMonths) ? targetTermMonths : ''}
-            onChange={(e) => onTargetTermMonthsChange(Number(e.target.value) || 0)}
+            value={targetTermMonths}
+            onChange={(e) => onTargetTermMonthsChange(parseNumericInput(e.target.value))}
             className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
           />
         </div>
@@ -49,8 +51,8 @@ export function PayoffPlanner({
       {requiredMonthlyPayment !== null && (
         <p className="mt-3 rounded-md bg-gray-50 dark:bg-gray-800 px-3 py-2 text-sm">
           Required average payment: <span className="font-semibold">{formatRs(requiredMonthlyPayment)}</span> /
-          month for {targetTermMonths} month{targetTermMonths === 1 ? '' : 's'} (total ≈{' '}
-          {formatRs(requiredMonthlyPayment * targetTermMonths)})
+          month for {coerceNumeric(targetTermMonths)} month{coerceNumeric(targetTermMonths) === 1 ? '' : 's'}{' '}
+          (total ≈ {formatRs(requiredMonthlyPayment * coerceNumeric(targetTermMonths))})
         </p>
       )}
     </div>

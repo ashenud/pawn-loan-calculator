@@ -7,27 +7,36 @@ import {
   simulatePayoffSchedule,
 } from './lib/payoffPlanner'
 import type { Karat } from './lib/types'
+import { coerceNumeric, type NumericInputValue } from './lib/numericInput'
+import { applyTheme, getInitialTheme, type Theme } from './lib/theme'
 import { BankSelector } from './components/BankSelector'
 import { CalculatorForm } from './components/CalculatorForm'
 import { ResultsSummary } from './components/ResultsSummary'
 import { PayoffPlanner } from './components/PayoffPlanner'
 import { PaymentScheduleSimulator } from './components/PaymentScheduleSimulator'
 import { Disclaimer } from './components/Disclaimer'
+import { ThemeToggle } from './components/ThemeToggle'
 
 const ALL_KARATS: Karat[] = ['24K', '22K', '21K', '18K']
 
 function App() {
+  const [theme, setTheme] = useState<Theme>(getInitialTheme)
+
+  useEffect(() => {
+    applyTheme(theme)
+  }, [theme])
+
   const [selectedBankId, setSelectedBankId] = useState(bankPresets[0].id)
   const isCustom = selectedBankId === CUSTOM_PRESET_ID
   const selectedPreset = bankPresets.find((p) => p.id === selectedBankId)
 
   const [entryMode, setEntryMode] = useState<'gold' | 'direct'>('gold')
-  const [goldWeightGrams, setGoldWeightGrams] = useState(10)
+  const [goldWeightGrams, setGoldWeightGrams] = useState<NumericInputValue>(10)
   const [karat, setKarat] = useState<Karat>('22K')
-  const [advanceRatePerGram, setAdvanceRatePerGram] = useState(30000)
-  const [directPrincipal, setDirectPrincipal] = useState(300000)
-  const [annualInterestRatePercent, setAnnualInterestRatePercent] = useState(13)
-  const [loanPeriodMonths, setLoanPeriodMonths] = useState(6)
+  const [advanceRatePerGram, setAdvanceRatePerGram] = useState<NumericInputValue>(30000)
+  const [directPrincipal, setDirectPrincipal] = useState<NumericInputValue>(300000)
+  const [annualInterestRatePercent, setAnnualInterestRatePercent] = useState<NumericInputValue>(13)
+  const [loanPeriodMonths, setLoanPeriodMonths] = useState<NumericInputValue>(6)
 
   const availableKarats = useMemo<Karat[]>(
     () =>
@@ -44,57 +53,71 @@ function App() {
   }, [selectedBankId, karat, isCustom, selectedPreset])
 
   const computedPrincipal =
-    entryMode === 'gold' ? principalFromGoldWeight(goldWeightGrams, advanceRatePerGram) : directPrincipal
+    entryMode === 'gold'
+      ? principalFromGoldWeight(coerceNumeric(goldWeightGrams), coerceNumeric(advanceRatePerGram))
+      : coerceNumeric(directPrincipal)
 
   const quickResult = quickEstimate({
     principal: computedPrincipal,
-    annualInterestRatePercent,
-    loanPeriodMonths,
+    annualInterestRatePercent: coerceNumeric(annualInterestRatePercent),
+    loanPeriodMonths: coerceNumeric(loanPeriodMonths),
   })
 
   // Payoff planner
-  const [targetTermMonths, setTargetTermMonths] = useState(12)
+  const [targetTermMonths, setTargetTermMonths] = useState<NumericInputValue>(12)
+  const targetTermMonthsNumeric = coerceNumeric(targetTermMonths)
   const requiredMonthlyPayment =
-    computedPrincipal > 0 && targetTermMonths > 0
-      ? computeRequiredMonthlyPayment(computedPrincipal, annualInterestRatePercent, targetTermMonths)
+    computedPrincipal > 0 && targetTermMonthsNumeric > 0
+      ? computeRequiredMonthlyPayment(
+          computedPrincipal,
+          coerceNumeric(annualInterestRatePercent),
+          targetTermMonthsNumeric,
+        )
       : null
 
   // Payment schedule simulator
-  const [planMonths, setPlanMonths] = useState(12)
-  const [payments, setPayments] = useState<number[]>(() => buildFlatPaymentSchedule(0, 12))
+  const [planMonths, setPlanMonths] = useState<NumericInputValue>(12)
+  const planMonthsNumeric = coerceNumeric(planMonths)
+  const [payments, setPayments] = useState<NumericInputValue[]>(() => buildFlatPaymentSchedule(0, 12))
 
   useEffect(() => {
     setPayments((prev) => {
-      if (prev.length === planMonths) return prev
-      const next = prev.slice(0, planMonths)
-      while (next.length < planMonths) next.push(0)
+      if (prev.length === planMonthsNumeric) return prev
+      const next = prev.slice(0, planMonthsNumeric)
+      while (next.length < planMonthsNumeric) next.push(0)
       return next
     })
-  }, [planMonths])
+  }, [planMonthsNumeric])
 
-  const handlePaymentChange = (index: number, value: number) => {
+  const handlePaymentChange = (index: number, value: NumericInputValue) => {
     setPayments((prev) => prev.map((p, i) => (i === index ? value : p)))
   }
 
   const handleLoadIntoSimulator = () => {
     if (requiredMonthlyPayment === null) return
-    setPlanMonths(targetTermMonths)
-    setPayments(buildFlatPaymentSchedule(Math.round(requiredMonthlyPayment), targetTermMonths))
+    setPlanMonths(targetTermMonthsNumeric)
+    setPayments(buildFlatPaymentSchedule(Math.round(requiredMonthlyPayment), targetTermMonthsNumeric))
   }
 
-  const simulation = simulatePayoffSchedule(computedPrincipal, annualInterestRatePercent, payments, {
-    penalRatePercent: selectedPreset?.penalInterestRatePercent ?? 2,
-  })
+  const simulation = simulatePayoffSchedule(
+    computedPrincipal,
+    coerceNumeric(annualInterestRatePercent),
+    payments.map(coerceNumeric),
+    { penalRatePercent: selectedPreset?.penalInterestRatePercent ?? 2 },
+  )
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
       <div className="max-w-5xl mx-auto px-4 py-8">
-        <header className="mb-6">
-          <h1 className="text-2xl font-bold">Sri Lankan Pawn Loan Calculator</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Estimate what you'll receive and owe when pawning gold jewellery at a Sri Lankan
-            bank — with realistic, pay-as-you-can repayment planning.
-          </p>
+        <header className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">Sri Lankan Pawn Loan Calculator</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Estimate what you'll receive and owe when pawning gold jewellery at a Sri Lankan
+              bank — with realistic, pay-as-you-can repayment planning.
+            </p>
+          </div>
+          <ThemeToggle theme={theme} onToggle={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))} />
         </header>
 
         <div className="grid lg:grid-cols-2 gap-8">
@@ -121,7 +144,7 @@ function App() {
           </section>
 
           <section className="rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-            <ResultsSummary result={quickResult} loanPeriodMonths={loanPeriodMonths} />
+            <ResultsSummary result={quickResult} loanPeriodMonths={coerceNumeric(loanPeriodMonths)} />
           </section>
         </div>
 
