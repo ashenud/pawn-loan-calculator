@@ -1,4 +1,5 @@
 import type { Karat } from '../lib/types'
+import { parseNumericInput, type NumericInputValue } from '../lib/numericInput'
 
 const ALL_KARATS: Karat[] = ['24K', '22K', '21K', '18K']
 
@@ -6,34 +7,36 @@ interface CalculatorFormProps {
   entryMode: 'gold' | 'direct'
   onEntryModeChange: (mode: 'gold' | 'direct') => void
 
-  goldWeightGrams: number
-  onGoldWeightGramsChange: (value: number) => void
+  goldWeightGrams: NumericInputValue
+  onGoldWeightGramsChange: (value: NumericInputValue) => void
 
   karat: Karat
   onKaratChange: (value: Karat) => void
   availableKarats: Karat[]
 
-  advanceRatePerGram: number
-  onAdvanceRatePerGramChange: (value: number) => void
+  advanceRatePerGram: NumericInputValue
+  onAdvanceRatePerGramChange: (value: NumericInputValue) => void
 
-  directPrincipal: number
-  onDirectPrincipalChange: (value: number) => void
+  directPrincipal: NumericInputValue
+  onDirectPrincipalChange: (value: NumericInputValue) => void
 
-  annualInterestRatePercent: number
-  onAnnualInterestRatePercentChange: (value: number) => void
+  annualInterestRatePercent: NumericInputValue
+  onAnnualInterestRatePercentChange: (value: NumericInputValue) => void
 
-  loanPeriodMonths: number
-  onLoanPeriodMonthsChange: (value: number) => void
+  loanPeriodMonths: NumericInputValue
+  onLoanPeriodMonthsChange: (value: NumericInputValue) => void
 
   computedPrincipal: number
 }
 
-function numberInputProps(value: number, onChange: (v: number) => void) {
+function numberInputProps(
+  value: NumericInputValue,
+  onChange: (v: NumericInputValue) => void,
+) {
   return {
-    value: Number.isFinite(value) ? value : '',
+    value,
     onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
-      const parsed = Number(e.target.value)
-      onChange(Number.isFinite(parsed) ? parsed : 0)
+      onChange(parseNumericInput(e.target.value))
     },
     className:
       'w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm',
