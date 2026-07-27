@@ -1,5 +1,14 @@
 export type Karat = '24K' | '22K' | '21K' | '18K'
 
+/**
+ * 'reducing' (the Sri Lankan bank standard — see docs/pawning-in-sri-lanka.md):
+ * interest each month is charged on the outstanding balance, so it shrinks
+ * as principal is paid down. 'flat': interest each month is a constant
+ * fraction of the *original* principal, regardless of how much has already
+ * been repaid — offered here as a comparison, not because banks use it.
+ */
+export type InterestMethod = 'reducing' | 'flat'
+
 export interface BankPreset {
   id: string
   bankName: string

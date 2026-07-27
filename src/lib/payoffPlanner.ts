@@ -1,20 +1,25 @@
-import type { PaymentScheduleRow, PayoffSimulationResult } from './types'
+import type { InterestMethod, PaymentScheduleRow, PayoffSimulationResult } from './types'
 
 const EPSILON = 1e-6
+const DEFAULT_MAX_MONTHS = 600
 
 export interface PayoffPlannerOptions {
   /** Extra rate (percentage points) added to the base rate once a renewal is missed. Defaults to 2, per CBSL/bank penal-interest practice. */
   penalRatePercent?: number
   /** How often (in months) the advance must be renewed by settling accrued interest. Defaults to 12. */
   renewalIntervalMonths?: number
+  /** 'reducing' (default, bank standard) or 'flat' — see InterestMethod. */
+  interestMethod?: InterestMethod
 }
 
 /**
- * Simulates a Sri Lankan bank pawning advance month by month using the
- * reducing-balance method banks actually use: interest accrues on the
- * outstanding balance only, each payment is applied interest-first (with
- * any remainder reducing principal), and unpaid interest is never
+ * Simulates a pawning advance month by month. By default uses the
+ * reducing-balance method Sri Lankan banks actually use: interest accrues
+ * on the outstanding balance only, each payment is applied interest-first
+ * (with any remainder reducing principal), and unpaid interest is never
  * capitalized into the principal — it simply carries forward as arrears.
+ * Pass `options.interestMethod: 'flat'` to instead charge interest as a
+ * constant share of the original principal every month, for comparison.
  *
  * At each renewal checkpoint (every `renewalIntervalMonths`), if interest
  * arrears haven't been cleared, the advance is treated as having missed its
@@ -42,6 +47,7 @@ export function simulatePayoffSchedule(
 
   const penalRatePercent = options.penalRatePercent ?? 2
   const renewalIntervalMonths = options.renewalIntervalMonths ?? 12
+  const interestMethod = options.interestMethod ?? 'reducing'
 
   const rows: PaymentScheduleRow[] = []
   let openingBalance = principal
@@ -58,7 +64,10 @@ export function simulatePayoffSchedule(
       ? annualInterestRatePercent + penalRatePercent
       : annualInterestRatePercent
 
-    const interestAccrued = (openingBalance * (effectiveAnnualRatePercent / 100)) / 12
+    // Reducing balance: interest shrinks as the balance is paid down. Flat:
+    // interest is a constant share of the original principal every month.
+    const interestBase = interestMethod === 'flat' ? principal : openingBalance
+    const interestAccrued = (interestBase * (effectiveAnnualRatePercent / 100)) / 12
     const totalInterestDue = interestArrears + interestAccrued
 
     const payment = payments[i]
@@ -120,17 +129,19 @@ export function simulatePayoffSchedule(
 }
 
 /**
- * Solves for the level monthly payment that fully clears `principal` (plus
- * accruing reducing-balance interest) within `targetTermMonths`, using the
- * standard amortizing-loan annuity formula. Real pawning repayments are
- * irregular, so this is a reference figure — feed the result into
- * `simulatePayoffSchedule` as a flat payment array to see the matching
- * schedule.
+ * Solves for the level monthly payment that fully clears `principal` within
+ * `targetTermMonths`. Under 'reducing' (default), this is the standard
+ * amortizing-loan annuity formula. Under 'flat', it's the classic flat-rate
+ * formula: a constant principal/term repayment plus constant interest on
+ * the original principal. Real pawning repayments are irregular, so this is
+ * a reference figure — feed the result into `simulatePayoffSchedule` as a
+ * flat payment array to see the matching schedule.
  */
 export function computeRequiredMonthlyPayment(
   principal: number,
   annualInterestRatePercent: number,
   targetTermMonths: number,
+  interestMethod: InterestMethod = 'reducing',
 ): number {
   if (principal < 0) throw new RangeError('principal must be non-negative')
   if (annualInterestRatePercent < 0) {
@@ -145,9 +156,11 @@ export function computeRequiredMonthlyPayment(
   const monthlyRate = annualInterestRatePercent / 100 / 12
   if (monthlyRate === 0) return principal / targetTermMonths
 
-  return (
-    (principal * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -targetTermMonths))
-  )
+  if (interestMethod === 'flat') {
+    return principal / targetTermMonths + principal * monthlyRate
+  }
+
+  return (principal * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -targetTermMonths))
 }
 
 export function buildFlatPaymentSchedule(payment: number, months: number): number[] {
@@ -155,4 +168,27 @@ export function buildFlatPaymentSchedule(payment: number, months: number): numbe
     throw new RangeError('months must be a non-negative integer')
   }
   return Array.from({ length: months }, () => payment)
+}
+
+/**
+ * Given a flat amount paid every month, how many months until the balance
+ * (principal + any accrued interest) is fully cleared? Simulates over a
+ * bounded horizon (`options.maxMonths`, default 600 = 50 years) so this
+ * stays total even for a payment too small to ever clear the balance —
+ * returns null in that case rather than looping forever.
+ */
+export function monthsToPayoffWithFlatPayment(
+  principal: number,
+  annualInterestRatePercent: number,
+  monthlyPayment: number,
+  options: PayoffPlannerOptions & { maxMonths?: number } = {},
+): number | null {
+  const maxMonths = options.maxMonths ?? DEFAULT_MAX_MONTHS
+  if (maxMonths <= 0 || !Number.isInteger(maxMonths)) {
+    throw new RangeError('maxMonths must be a positive integer')
+  }
+
+  const payments = buildFlatPaymentSchedule(monthlyPayment, maxMonths)
+  const result = simulatePayoffSchedule(principal, annualInterestRatePercent, payments, options)
+  return result.monthsToPayoff
 }

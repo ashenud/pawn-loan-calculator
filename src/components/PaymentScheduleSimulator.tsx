@@ -1,12 +1,19 @@
-import type { PayoffSimulationResult } from '../lib/types'
+import type { InterestMethod, PayoffSimulationResult } from '../lib/types'
 import { parseNumericInput, type NumericInputValue } from '../lib/numericInput'
 
 interface PaymentScheduleSimulatorProps {
+  interestMethod: InterestMethod
   planMonths: NumericInputValue
   onPlanMonthsChange: (value: NumericInputValue) => void
   payments: NumericInputValue[]
   onPaymentChange: (index: number, value: NumericInputValue) => void
   simulation: PayoffSimulationResult
+
+  monthlyPaymentInput: NumericInputValue
+  onMonthlyPaymentInputChange: (value: NumericInputValue) => void
+  estimatedMonthsForPayment: number | null
+  onApplyMonthlyPayment: () => void
+  monthlyPaymentHorizonMonths: number
 }
 
 function formatRs(value: number) {
@@ -14,34 +21,81 @@ function formatRs(value: number) {
 }
 
 export function PaymentScheduleSimulator({
+  interestMethod,
   planMonths,
   onPlanMonthsChange,
   payments,
   onPaymentChange,
   simulation,
+  monthlyPaymentInput,
+  onMonthlyPaymentInputChange,
+  estimatedMonthsForPayment,
+  onApplyMonthlyPayment,
+  monthlyPaymentHorizonMonths,
 }: PaymentScheduleSimulatorProps) {
+  const hasMonthlyPaymentInput = monthlyPaymentInput !== '' && monthlyPaymentInput > 0
+
   return (
     <div>
       <h2 className="text-lg font-semibold mb-1">Payment schedule simulator</h2>
       <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
         Enter what you actually plan to pay each month — leave a row at 0 to simulate skipping
-        that month. Interest is charged on the reducing outstanding balance and applied
-        interest-first, matching how banks calculate pawning interest.
+        that month. Interest is charged{' '}
+        {interestMethod === 'flat'
+          ? 'as a flat rate on the original amount received'
+          : 'on the reducing outstanding balance'}{' '}
+        and applied interest-first, matching how banks calculate pawning interest.
       </p>
 
-      <div className="flex items-center gap-3 mb-3">
-        <label htmlFor="plan-months" className="text-sm font-medium">
-          Months to plan
-        </label>
-        <input
-          id="plan-months"
-          type="number"
-          min={1}
-          max={120}
-          value={planMonths}
-          onChange={(e) => onPlanMonthsChange(parseNumericInput(e.target.value))}
-          className="w-24 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
-        />
+      <div className="grid sm:grid-cols-2 gap-4 mb-4">
+        <div>
+          <label htmlFor="plan-months" className="block text-sm font-medium mb-1">
+            Months to plan
+          </label>
+          <input
+            id="plan-months"
+            type="number"
+            min={1}
+            max={120}
+            value={planMonths}
+            onChange={(e) => onPlanMonthsChange(parseNumericInput(e.target.value))}
+            className="w-24 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+          />
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Fills the table below with this many rows to edit by hand.
+          </p>
+        </div>
+
+        <div>
+          <label htmlFor="monthly-payment-input" className="block text-sm font-medium mb-1">
+            Or, what I can pay monthly (Rs)
+          </label>
+          <div className="flex gap-2">
+            <input
+              id="monthly-payment-input"
+              type="number"
+              min={0}
+              value={monthlyPaymentInput}
+              onChange={(e) => onMonthlyPaymentInputChange(parseNumericInput(e.target.value))}
+              className="w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+            />
+            <button
+              type="button"
+              onClick={onApplyMonthlyPayment}
+              disabled={!hasMonthlyPaymentInput || estimatedMonthsForPayment === null}
+              className="shrink-0 rounded-md bg-purple-600 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white px-3 py-2 text-sm font-medium"
+            >
+              Apply
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {!hasMonthlyPaymentInput
+              ? 'Enter an amount to see how many months it would take to pay off.'
+              : estimatedMonthsForPayment !== null
+                ? `≈ ${estimatedMonthsForPayment} month${estimatedMonthsForPayment === 1 ? '' : 's'} to pay off at this amount. Click Apply to fill the table below.`
+                : `This amount won't clear the balance within ${monthlyPaymentHorizonMonths} months — try a higher payment.`}
+          </p>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-md border border-gray-200 dark:border-gray-700">
